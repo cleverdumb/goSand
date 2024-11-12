@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/draw"
 	"log"
+	"math/rand/v2"
 	"runtime"
 
 	_ "image/png"
@@ -59,15 +60,8 @@ var square = []float32{
 	-1 + float32(bw)/float32(scrW)*2, 1 - float32(bh)/float32(scrH)*2, 0, 1, 1,
 }
 
-// var square = []float32{
-// 	-1, 1, 0, 0, 0,
-// 	-1, 0.8, 0, 0, 1,
-// 	-0.8, 0.8, 0, 1, 1,
-
-// 	-1, 1, 0, 0, 0,
-// 	-0.8, 1, 0, 1, 0,
-// 	-0.8, 0.8, 0, 1, 1,
-// }
+var texMap = make(map[string]uint32)
+var grid = make([][]*cell, gh)
 
 var program uint32
 
@@ -117,20 +111,25 @@ func main() {
 	if err != nil {
 		log.Fatalln("Failed to load texture sandTex")
 	}
+	texMap["sand"] = sandTex
 
 	dirtTex, err := loadTexture("./dirtTex.png")
 	if err != nil {
 		log.Fatalln("Failed to load texture dirtTex")
 	}
+	texMap["dirt"] = dirtTex
 
-	grid := make([][]*cell, gh)
 	for yi := 0; yi < gh; yi++ {
 		for xi := 0; xi < gw; xi++ {
 			var c *cell
-			if xi%2 == 0 {
-				c = newCell(xi, yi, sandTex)
-			} else {
-				c = newCell(xi, yi, dirtTex)
+			r := rand.IntN(2)
+			switch r % 3 {
+			case 0:
+				c = newCell(xi, yi, "sand")
+			case 1:
+				c = newCell(xi, yi, "dirt")
+			case 2:
+				c = newCell(xi, yi, "empty")
 			}
 			grid[yi] = append(grid[yi], c)
 		}
@@ -143,9 +142,9 @@ func main() {
 
 		for _, x := range grid {
 			for _, y := range x {
-				gl.BindTexture(gl.TEXTURE_2D, y.tex)
-				gl.BindVertexArray(y.vao)
-				gl.DrawArrays(gl.TRIANGLES, 0, int32(len(square)/3))
+				if y.t != "empty" {
+					y.draw()
+				}
 			}
 		}
 
@@ -179,15 +178,20 @@ func makeVao(points []float32) uint32 {
 }
 
 type cell struct {
-	x   int
-	y   int
-	t   int
-	tex uint32
+	x int
+	y int
+	t string
 
 	vao uint32
 }
 
-func newCell(x int, y int, tex uint32) *cell {
+func (c *cell) draw() {
+	gl.BindTexture(gl.TEXTURE_2D, texMap[c.t])
+	gl.BindVertexArray(c.vao)
+	gl.DrawArrays(gl.TRIANGLES, 0, int32(len(square)/3))
+}
+
+func newCell(x int, y int, t string) *cell {
 	points := make([]float32, len(square))
 	copy(points, square)
 
@@ -203,10 +207,9 @@ func newCell(x int, y int, tex uint32) *cell {
 	}
 
 	return &cell{
-		x:   x,
-		y:   y,
-		t:   1,
-		tex: tex,
+		x: x,
+		y: y,
+		t: t,
 
 		vao: makeVao(points),
 	}
