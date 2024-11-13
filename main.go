@@ -7,7 +7,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"runtime"
-	"time"
+	"sync"
 
 	_ "image/png"
 	"os"
@@ -125,33 +125,69 @@ func main() {
 	for yi := 0; yi < gh; yi++ {
 		for xi := 0; xi < gw; xi++ {
 			var c *cell
-			r := rand.IntN(2)
-			switch r % 3 {
-			case 0:
+			// r := rand.IntN(2)
+			// switch r % 3 {
+			// case 0:
+			// 	c = newCell(xi, yi, "sand")
+			// case 1:
+			// 	c = newCell(xi, yi, "empty")
+			// case 2:
+			// 	c = newCell(xi, yi, "empty")
+			// }
+			if yi < gh/2 {
 				c = newCell(xi, yi, "sand")
-			case 1:
-				c = newCell(xi, yi, "dirt")
-			case 2:
+			} else {
 				c = newCell(xi, yi, "empty")
 			}
 			grid[yi] = append(grid[yi], c)
 		}
 	}
 
-	grid[3][3] = newCell(3, 3, "sand")
-	grid[4][3] = newCell(3, 4, "empty")
+	// grid[3][3] = newCell(3, 3, "sand")
+	// grid[4][3] = newCell(3, 4, "empty")
 
 	renderAll(window)
 
-	time.Sleep(2 * time.Second)
-
 	for _, x := range grid[3][3].updateSqr() {
-		grid[x.y][x.x].t = x.t
+		execUpdateBlock(x)
+	}
+
+	mainCh := make(chan *updatePack)
+	quitCh := make(chan uint8)
+
+	for x := 0; x < 8; x++ {
+		go updateThread(mainCh, quitCh)
 	}
 
 	for !window.ShouldClose() {
+		pack := <-mainCh
+		execUpdateBlock(pack)
+
 		renderAll(window)
 	}
+
+	quitCh <- uint8(1)
+}
+
+func updateThread(ch chan *updatePack, quit chan uint8) {
+out:
+	for {
+		select {
+		case <-quit:
+			break out
+		default:
+			rx, ry := rand.IntN(gw), rand.IntN(gh)
+			for _, x := range grid[ry][rx].updateSqr() {
+				ch <- x
+			}
+
+			// time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+
+func execUpdateBlock(x *updatePack) {
+	grid[x.y][x.x].t = x.t
 }
 
 func renderAll(window *glfw.Window) {
@@ -199,6 +235,8 @@ type cell struct {
 	t string
 
 	vao uint32
+
+	mut sync.Mutex
 }
 
 func (c *cell) draw() {
