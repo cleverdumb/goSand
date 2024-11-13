@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"runtime"
+	"time"
 
 	_ "image/png"
 	"os"
@@ -107,6 +108,8 @@ func main() {
 	gl.AttachShader(program, fragmentShader)
 	gl.LinkProgram(program)
 
+	gl.UseProgram(program)
+
 	sandTex, err := loadTexture("./sandTex.png")
 	if err != nil {
 		log.Fatalln("Failed to load texture sandTex")
@@ -135,22 +138,35 @@ func main() {
 		}
 	}
 
+	grid[3][3] = newCell(3, 3, "sand")
+	grid[4][3] = newCell(3, 4, "empty")
+
+	renderAll(window)
+
+	time.Sleep(2 * time.Second)
+
+	for _, x := range grid[3][3].updateSqr() {
+		grid[x.y][x.x].t = x.t
+	}
+
 	for !window.ShouldClose() {
-		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+		renderAll(window)
+	}
+}
 
-		gl.UseProgram(program)
+func renderAll(window *glfw.Window) {
+	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-		for _, x := range grid {
-			for _, y := range x {
-				if y.t != "empty" {
-					y.draw()
-				}
+	for _, x := range grid {
+		for _, y := range x {
+			if y.t != "empty" {
+				y.draw()
 			}
 		}
-
-		window.SwapBuffers()
-		glfw.PollEvents()
 	}
+
+	window.SwapBuffers()
+	glfw.PollEvents()
 }
 
 func makeVao(points []float32) uint32 {
@@ -213,6 +229,35 @@ func newCell(x int, y int, t string) *cell {
 
 		vao: makeVao(points),
 	}
+}
+
+type updatePack struct {
+	x int
+	y int
+	t string
+}
+
+func (c *cell) updateSqr() []*updatePack {
+	res := make([]*updatePack, 0)
+	switch c.t {
+	case "sand":
+		if c.y < gh-1 && grid[c.y+1][c.x].t == "empty" {
+			res = append(res, &updatePack{
+				x: c.x,
+				y: c.y,
+				t: "empty",
+			},
+				&updatePack{
+					x: c.x,
+					y: c.y + 1,
+					t: "sand",
+				})
+		}
+	default:
+		break
+	}
+
+	return res
 }
 
 func loadTexture(name string) (uint32, error) {
