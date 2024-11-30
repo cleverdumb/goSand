@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"runtime"
 	"sync"
+	"time"
 
 	_ "image/png"
 	"os"
@@ -43,8 +44,8 @@ void main() {
 ` + "\x00"
 
 const (
-	gw   = 10
-	gh   = 10
+	gw   = 100
+	gh   = 100
 	scrW = 800
 	scrH = 800
 	bw   = scrW / gw
@@ -146,48 +147,76 @@ func main() {
 	// grid[3][3] = newCell(3, 3, "sand")
 	// grid[4][3] = newCell(3, 4, "empty")
 
-	renderAll(window)
+	// renderAll(window)
 
-	for _, x := range grid[3][3].updateSqr() {
-		execUpdateBlock(x)
-	}
+	// for _, x := range grid[3][3].updateSqr() {
+	// 	execUpdateBlock(x)
+	// }
 
-	mainCh := make(chan *updatePack)
+	// mainCh := make(chan *updatePack)
 	quitCh := make(chan uint8)
 
 	for x := 0; x < 8; x++ {
-		go updateThread(mainCh, quitCh)
+		go updateThread(quitCh)
 	}
 
+	// go renderThread(window, quitCh)
+
 	for !window.ShouldClose() {
-		pack := <-mainCh
-		execUpdateBlock(pack)
+		// s := time.Now()
+		// pack := <-mainCh
+		// execUpdateBlock(pack)
 
 		renderAll(window)
+		time.Sleep((1000 / 30) * time.Millisecond)
+		// log.Println(time.Since(s))
 	}
 
 	quitCh <- uint8(1)
 }
 
-func updateThread(ch chan *updatePack, quit chan uint8) {
+// func renderThread(window *glfw.Window, quit chan uint8) {
+// out:
+// 	for {
+// 		select {
+// 		case <-quit:
+// 			break out
+// 		default:
+// 			renderAll(window)
+// 			time.Sleep((1000 / 30) * time.Millisecond)
+// 		}
+// 	}
+// }
+
+func updateThread(quit chan uint8) {
 out:
 	for {
 		select {
 		case <-quit:
 			break out
 		default:
+			// s := time.Now()
 			rx, ry := rand.IntN(gw), rand.IntN(gh)
-			for _, x := range grid[ry][rx].updateSqr() {
-				ch <- x
+			for grid[ry][rx].picked {
+				rx, ry = rand.IntN(gw), rand.IntN(gh)
 			}
+			grid[ry][rx].picked = true
+			for _, x := range grid[ry][rx].updateSqr() {
+				// ch <- x
+				execUpdateBlock(x)
+			}
+			grid[ry][rx].picked = false
+			// log.Println(time.Since(s))
 
-			// time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Nanosecond)
 		}
 	}
 }
 
 func execUpdateBlock(x *updatePack) {
+	grid[x.y][x.x].mut.Lock()
 	grid[x.y][x.x].t = x.t
+	grid[x.y][x.x].mut.Unlock()
 }
 
 func renderAll(window *glfw.Window) {
@@ -237,6 +266,8 @@ type cell struct {
 	vao uint32
 
 	mut sync.Mutex
+
+	picked bool
 }
 
 func (c *cell) draw() {
@@ -269,14 +300,57 @@ func newCell(x int, y int, t string) *cell {
 	}
 }
 
+type coord struct {
+	x int
+	y int
+}
+
 type updatePack struct {
 	x int
 	y int
 	t string
 }
 
+func getAround(x int, y int) []*coord {
+	res := make([]*coord, 0)
+
+	if x > 0 {
+		if y > 0 {
+			res = append(res, &coord{x: x - 1, y: y - 1})
+		}
+		res = append(res, &coord{x: x - 1, y: y})
+		if y < gh-1 {
+			res = append(res, &coord{x: x - 1, y: y + 1})
+		}
+	}
+
+	if y > 0 {
+		res = append(res, &coord{x: x, y: y - 1})
+	}
+	res = append(res, &coord{x: x, y: y})
+	if y < gh-1 {
+		res = append(res, &coord{x: x, y: y + 1})
+	}
+
+	if x < gw-1 {
+		if y > 0 {
+			res = append(res, &coord{x: x + 1, y: y - 1})
+		}
+		res = append(res, &coord{x: x + 1, y: y})
+		if y < gh-1 {
+			res = append(res, &coord{x: x + 1, y: y + 1})
+		}
+	}
+
+	return res
+}
+
 func (c *cell) updateSqr() []*updatePack {
 	res := make([]*updatePack, 0)
+	around := getAround(c.x, c.y)
+	for _, coord := range around {
+		grid[coord.y][coord.x].mut.Lock()
+	}
 	switch c.t {
 	case "sand":
 		if c.y < gh-1 && grid[c.y+1][c.x].t == "empty" {
@@ -293,6 +367,10 @@ func (c *cell) updateSqr() []*updatePack {
 		}
 	default:
 		break
+	}
+
+	for _, coord := range around {
+		grid[coord.y][coord.x].mut.Unlock()
 	}
 
 	return res
