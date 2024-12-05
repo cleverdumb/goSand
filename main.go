@@ -48,8 +48,8 @@ void main() {
 ` + "\x00"
 
 const (
-	gw   = 10
-	gh   = 10
+	gw   = 100
+	gh   = 100
 	scrW = 800
 	scrH = 800
 	bw   = scrW / gw
@@ -109,12 +109,21 @@ func init() {
 		},
 		{
 			"* * * " +
-				"* x * " +
+				"_ x * " +
 				"_ n *",
 
 			"/ / / " +
 				"/ _ / " +
 				"x / /",
+		},
+		{
+			"* * * " +
+				"* x _ " +
+				"* n _",
+
+			"/ / / " +
+				"/ _ / " +
+				"/ / x",
 		},
 	}
 }
@@ -182,7 +191,7 @@ func main() {
 			// case 2:
 			// 	c = newCell(xi, yi, "empty")
 			// }
-			if xi == 3 {
+			if yi <= gh/2 {
 				c = newCell(xi, yi, "sand")
 			} else {
 				c = newCell(xi, yi, "empty")
@@ -204,9 +213,9 @@ func main() {
 	// mainCh := make(chan *updatePack)
 	quitCh := make(chan uint8)
 
-	// for x := 0; x < 7; x++ {
-	go updateThread(quitCh)
-	// }
+	for x := 0; x < 7; x++ {
+		go updateThread(quitCh)
+	}
 
 	// go renderThread(window, quitCh)
 
@@ -257,7 +266,7 @@ out:
 			grid[ry][rx].picked = false
 			// log.Println(time.Since(s))
 
-			time.Sleep(4 * time.Millisecond)
+			time.Sleep(4 * time.Nanosecond)
 
 			// break out
 		}
@@ -473,8 +482,9 @@ func (c *cell) updateSqr() []*updatePack {
 	possibleRules := rules[c.t]
 	first := make([]string, 2)
 	foundMatch := false
-	for _, v := range possibleRules {
+	for randI, _ := range rand.Perm(len(possibleRules)) {
 		match := true
+		v := possibleRules[randI]
 		r := v[0]
 		for i, ruleCell := range strings.Split(r, " ") {
 			// fmt.Println(r)
