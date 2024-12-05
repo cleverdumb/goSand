@@ -5,8 +5,12 @@ import (
 	"image"
 	"image/draw"
 	"log"
+	"math"
 	"math/rand/v2"
 	"runtime"
+	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,8 +48,8 @@ void main() {
 ` + "\x00"
 
 const (
-	gw   = 100
-	gh   = 100
+	gw   = 10
+	gh   = 10
 	scrW = 800
 	scrH = 800
 	bw   = scrW / gw
@@ -67,9 +71,52 @@ var grid = make([][]*cell, gh)
 
 var program uint32
 
+var rules = make(map[string][][]string, 0)
+var ruleCode = map[string]int{
+	"sand": 0,
+}
+var revRuleCode = map[int]string{
+	0: "sand",
+}
+
+var ruleClass = map[string][]int{
+	"A": {0},
+}
+
+/*
+non-edge empty = _
+any = *
+centre = x
+class = uppercase letter
+edge = e
+no change = /
+not empty = n
+*/
+
 func init() {
 	// This is needed to properly initialize OpenGL on macOS.
 	runtime.LockOSThread()
+
+	rules["sand"] = [][]string{
+		{
+			"* * * " +
+				"* x * " +
+				"* _ *",
+
+			"/ / / " +
+				"/ _ / " +
+				"/ x /",
+		},
+		{
+			"* * * " +
+				"* x * " +
+				"_ n *",
+
+			"/ / / " +
+				"/ _ / " +
+				"x / /",
+		},
+	}
 }
 
 func main() {
@@ -135,11 +182,12 @@ func main() {
 			// case 2:
 			// 	c = newCell(xi, yi, "empty")
 			// }
-			if yi < gh/2 {
+			if xi == 3 {
 				c = newCell(xi, yi, "sand")
 			} else {
 				c = newCell(xi, yi, "empty")
 			}
+			// c = newCell(xi, yi, "sand")
 			grid[yi] = append(grid[yi], c)
 		}
 	}
@@ -156,9 +204,9 @@ func main() {
 	// mainCh := make(chan *updatePack)
 	quitCh := make(chan uint8)
 
-	for x := 0; x < 8; x++ {
-		go updateThread(quitCh)
-	}
+	// for x := 0; x < 7; x++ {
+	go updateThread(quitCh)
+	// }
 
 	// go renderThread(window, quitCh)
 
@@ -200,6 +248,7 @@ out:
 			for grid[ry][rx].picked {
 				rx, ry = rand.IntN(gw), rand.IntN(gh)
 			}
+			// rx, ry = 4, 4
 			grid[ry][rx].picked = true
 			for _, x := range grid[ry][rx].updateSqr() {
 				// ch <- x
@@ -208,7 +257,9 @@ out:
 			grid[ry][rx].picked = false
 			// log.Println(time.Since(s))
 
-			time.Sleep(10 * time.Nanosecond)
+			time.Sleep(4 * time.Millisecond)
+
+			// break out
 		}
 	}
 }
@@ -345,35 +396,119 @@ func getAround(x int, y int) []*coord {
 	return res
 }
 
-func (c *cell) updateSqr() []*updatePack {
+func checkCellRule(rule string, c *cell, out bool) bool {
+	// log.Println(out)
+	// r := strings.Split(rule, " ")[y*3+x]
+	// log.Println(rule)
+	if out {
+		// log.Println("out")
+		return rule == "e" || rule == "*"
+	}
+	switch rule {
+	case "*":
+		return true
+	case "x":
+		return true
+	case "_":
+		return c.t == "empty"
+	case "n":
+		return c.t != "empty"
+	default:
+		if v, err := strconv.Atoi(rule); err != nil {
+			return slices.Contains(ruleClass[rule], ruleCode[c.t])
+		} else {
+			return ruleCode[c.t] == v
+		}
+	}
+}
+
+func genUpdatePack(rule string, x int, y int) []*updatePack {
 	res := make([]*updatePack, 0)
+	for i, v := range strings.Split(rule, " ") {
+		dx, dy := x+i%3, y+int(math.Floor(float64(i)/3))
+		if dx < 0 || dy < 0 || dx > gw-1 || dy > gh-1 {
+			continue
+		}
+
+		switch v {
+		case "/":
+			continue
+		case "x":
+			res = append(res, &updatePack{x: dx, y: dy, t: grid[y+1][x+1].t})
+		case "_":
+			res = append(res, &updatePack{x: dx, y: dy, t: "empty"})
+		default:
+			if v, err := strconv.Atoi(v); err == nil {
+				res = append(res, &updatePack{x: dx, y: dy, t: revRuleCode[v]})
+			}
+		}
+	}
+	return res
+}
+
+func (c *cell) updateSqr() []*updatePack {
+	// res := make([]*updatePack, 0)
 	around := getAround(c.x, c.y)
 	for _, coord := range around {
 		grid[coord.y][coord.x].mut.Lock()
 	}
-	switch c.t {
-	case "sand":
-		if c.y < gh-1 && grid[c.y+1][c.x].t == "empty" {
-			res = append(res, &updatePack{
-				x: c.x,
-				y: c.y,
-				t: "empty",
-			},
-				&updatePack{
-					x: c.x,
-					y: c.y + 1,
-					t: "sand",
-				})
+	// switch c.t {
+	// case "sand":
+	// 	if c.y < gh-1 && grid[c.y+1][c.x].t == "empty" {
+	// 		res = append(res, &updatePack{
+	// 			x: c.x,
+	// 			y: c.y,
+	// 			t: "empty",
+	// 		},
+	// 			&updatePack{
+	// 				x: c.x,
+	// 				y: c.y + 1,
+	// 				t: "sand",
+	// 			})
+	// 	}
+	// default:
+	// 	break
+	// }
+
+	possibleRules := rules[c.t]
+	first := make([]string, 2)
+	foundMatch := false
+	for _, v := range possibleRules {
+		match := true
+		r := v[0]
+		for i, ruleCell := range strings.Split(r, " ") {
+			// fmt.Println(r)
+			dx, dy := i%3, int(math.Floor(float64(i)/3))
+			out := c.x+dx-1 < 0 || c.y+dy-1 < 0 || c.x+dx-1 > gw-1 || c.y+dy-1 > gh-1
+			if out {
+				if !checkCellRule(string(ruleCell), c, true) {
+					match = false
+					break
+				}
+			} else {
+				if !checkCellRule(string(ruleCell), grid[c.y+dy-1][c.x+dx-1], false) {
+					match = false
+					break
+				}
+			}
 		}
-	default:
-		break
+
+		if match {
+			first = v
+			foundMatch = true
+			break
+		}
 	}
 
 	for _, coord := range around {
 		grid[coord.y][coord.x].mut.Unlock()
 	}
 
-	return res
+	if !foundMatch {
+		return make([]*updatePack, 0)
+	}
+	return genUpdatePack(first[1], c.x-1, c.y-1)
+	// return res
 }
 
 func loadTexture(name string) (uint32, error) {
