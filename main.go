@@ -56,6 +56,14 @@ const (
 	bh   = scrH / gh
 )
 
+type Block int
+
+const (
+	Empty Block = iota
+	Sand
+	Dirt
+)
+
 var square = []float32{
 	-1, 1, 0, 0, 0,
 	-1, 1 - float32(bh)/float32(scrH)*2, 0, 0, 1,
@@ -66,21 +74,15 @@ var square = []float32{
 	-1 + float32(bw)/float32(scrW)*2, 1 - float32(bh)/float32(scrH)*2, 0, 1, 1,
 }
 
-var texMap = make(map[string]uint32)
+var texMap = make(map[Block]uint32)
 var grid = make([][]*cell, gh)
 
 var program uint32
 
-var rules = make(map[string][][]string, 0)
-var ruleCode = map[string]int{
-	"sand": 0,
-}
-var revRuleCode = map[int]string{
-	0: "sand",
-}
+var rules = make(map[Block][][]string, 0)
 
-var ruleClass = map[string][]int{
-	"A": {0},
+var ruleClass = map[string][]Block{
+	"A": {Sand},
 }
 
 /*
@@ -97,7 +99,7 @@ func init() {
 	// This is needed to properly initialize OpenGL on macOS.
 	runtime.LockOSThread()
 
-	rules["sand"] = [][]string{
+	rules[Sand] = [][]string{
 		{
 			"* * * " +
 				"* x * " +
@@ -171,13 +173,13 @@ func main() {
 	if err != nil {
 		log.Fatalln("Failed to load texture sandTex")
 	}
-	texMap["sand"] = sandTex
+	texMap[Sand] = sandTex
 
 	dirtTex, err := loadTexture("./dirtTex.png")
 	if err != nil {
 		log.Fatalln("Failed to load texture dirtTex")
 	}
-	texMap["dirt"] = dirtTex
+	texMap[Dirt] = dirtTex
 
 	for yi := 0; yi < gh; yi++ {
 		for xi := 0; xi < gw; xi++ {
@@ -192,9 +194,9 @@ func main() {
 			// 	c = newCell(xi, yi, "empty")
 			// }
 			if yi <= gh/2 {
-				c = newCell(xi, yi, "sand")
+				c = newCell(xi, yi, Sand)
 			} else {
-				c = newCell(xi, yi, "empty")
+				c = newCell(xi, yi, Empty)
 			}
 			// c = newCell(xi, yi, "sand")
 			grid[yi] = append(grid[yi], c)
@@ -284,7 +286,7 @@ func renderAll(window *glfw.Window) {
 
 	for _, x := range grid {
 		for _, y := range x {
-			if y.t != "empty" {
+			if y.t != Empty {
 				y.draw()
 			}
 		}
@@ -321,7 +323,7 @@ func makeVao(points []float32) uint32 {
 type cell struct {
 	x int
 	y int
-	t string
+	t Block
 
 	vao uint32
 
@@ -336,7 +338,7 @@ func (c *cell) draw() {
 	gl.DrawArrays(gl.TRIANGLES, 0, int32(len(square)/3))
 }
 
-func newCell(x int, y int, t string) *cell {
+func newCell(x int, y int, t Block) *cell {
 	points := make([]float32, len(square))
 	copy(points, square)
 
@@ -368,7 +370,7 @@ type coord struct {
 type updatePack struct {
 	x int
 	y int
-	t string
+	t Block
 }
 
 func getAround(x int, y int) []*coord {
@@ -419,14 +421,14 @@ func checkCellRule(rule string, c *cell, out bool) bool {
 	case "x":
 		return true
 	case "_":
-		return c.t == "empty"
+		return c.t == Empty
 	case "n":
-		return c.t != "empty"
+		return c.t != Empty
 	default:
 		if v, err := strconv.Atoi(rule); err != nil {
-			return slices.Contains(ruleClass[rule], ruleCode[c.t])
+			return slices.Contains(ruleClass[rule], c.t)
 		} else {
-			return ruleCode[c.t] == v
+			return c.t == Block(v)
 		}
 	}
 }
@@ -445,10 +447,10 @@ func genUpdatePack(rule string, x int, y int) []*updatePack {
 		case "x":
 			res = append(res, &updatePack{x: dx, y: dy, t: grid[y+1][x+1].t})
 		case "_":
-			res = append(res, &updatePack{x: dx, y: dy, t: "empty"})
+			res = append(res, &updatePack{x: dx, y: dy, t: Empty})
 		default:
 			if v, err := strconv.Atoi(v); err == nil {
-				res = append(res, &updatePack{x: dx, y: dy, t: revRuleCode[v]})
+				res = append(res, &updatePack{x: dx, y: dy, t: Block(v)})
 			}
 		}
 	}
@@ -461,28 +463,11 @@ func (c *cell) updateSqr() []*updatePack {
 	for _, coord := range around {
 		grid[coord.y][coord.x].mut.Lock()
 	}
-	// switch c.t {
-	// case "sand":
-	// 	if c.y < gh-1 && grid[c.y+1][c.x].t == "empty" {
-	// 		res = append(res, &updatePack{
-	// 			x: c.x,
-	// 			y: c.y,
-	// 			t: "empty",
-	// 		},
-	// 			&updatePack{
-	// 				x: c.x,
-	// 				y: c.y + 1,
-	// 				t: "sand",
-	// 			})
-	// 	}
-	// default:
-	// 	break
-	// }
 
 	possibleRules := rules[c.t]
 	first := make([]string, 2)
 	foundMatch := false
-	for randI, _ := range rand.Perm(len(possibleRules)) {
+	for randI := range rand.Perm(len(possibleRules)) {
 		match := true
 		v := possibleRules[randI]
 		r := v[0]
