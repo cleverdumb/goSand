@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"math/rand/v2"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -61,7 +62,7 @@ type Block int
 const (
 	Empty Block = iota
 	Sand
-	Dirt
+	Water
 )
 
 var square = []float32{
@@ -99,39 +100,45 @@ func init() {
 	// This is needed to properly initialize OpenGL on macOS.
 	runtime.LockOSThread()
 
-	rules[Sand] = [][]string{
-		{
-			"* * * " +
-				"* x * " +
-				"* _ *",
+	b, err := os.ReadFile("./rules.txt")
+	if err != nil {
+		panic(err)
+	}
+	str := string(b)
 
-			"/ / / " +
-				"/ _ / " +
-				"/ x /",
-		},
-		{
-			"* * * " +
-				"_ x * " +
-				"_ n *",
+	lines := strings.Split(str, "\n")
+	var target Block
+	r1, r2 := "", ""
+	lineCount := 0
 
-			"/ / / " +
-				"/ _ / " +
-				"x / /",
-		},
-		{
-			"* * * " +
-				"* x _ " +
-				"* n _",
+	for _, x := range lines {
+		if x == "" {
+			continue
+		}
+		if x[0] == '[' {
+			r := regexp.MustCompile(`\[([0-9]+)\]`)
+			found := r.FindStringSubmatch(x)
+			val, err := strconv.Atoi(found[1])
+			if err != nil {
+				panic(err)
+			}
+			target = Block(int(val))
+			continue
+		}
 
-			"/ / / " +
-				"/ _ / " +
-				"/ / x",
-		},
+		parts := regexp.MustCompile("  ").Split(x, -1)
+		r1 += parts[0] + " "
+		r2 += parts[1] + " "
+		lineCount++
+		if lineCount == 3 {
+			rules[target] = append(rules[target], []string{r1[:len(r1)-1], r2[:len(r2)-1]})
+			r1, r2 = "", ""
+			lineCount = 0
+		}
 	}
 }
 
 func main() {
-	// log.Println(square)
 	if err := glfw.Init(); err != nil {
 		log.Fatalln("failed to initialize glfw:", err)
 	}
@@ -175,11 +182,11 @@ func main() {
 	}
 	texMap[Sand] = sandTex
 
-	dirtTex, err := loadTexture("./dirtTex.png")
+	waterTex, err := loadTexture("./waterTex.png")
 	if err != nil {
-		log.Fatalln("Failed to load texture dirtTex")
+		log.Fatalln("Failed to load texture waterTex")
 	}
-	texMap[Dirt] = dirtTex
+	texMap[Water] = waterTex
 
 	for yi := 0; yi < gh; yi++ {
 		for xi := 0; xi < gw; xi++ {
@@ -194,7 +201,11 @@ func main() {
 			// 	c = newCell(xi, yi, "empty")
 			// }
 			if yi <= gh/2 {
-				c = newCell(xi, yi, Sand)
+				if rand.IntN(2) == 1 {
+					c = newCell(xi, yi, Water)
+				} else {
+					c = newCell(xi, yi, Sand)
+				}
 			} else {
 				c = newCell(xi, yi, Empty)
 			}
