@@ -49,8 +49,8 @@ void main() {
 ` + "\x00"
 
 const (
-	gw   = 100
-	gh   = 100
+	gw   = 200
+	gh   = 200
 	scrW = 800
 	scrH = 800
 	bw   = scrW / gw
@@ -110,6 +110,10 @@ func init() {
 	var target Block
 	r1, r2 := "", ""
 	lineCount := 0
+	symFlag := map[string]bool{
+		"x": false,
+		"y": false,
+	}
 
 	for _, x := range lines {
 		if x == "" {
@@ -125,13 +129,68 @@ func init() {
 			target = Block(int(val))
 			continue
 		}
+		if x[0] == '<' {
+			switch x {
+			case "<x>":
+				symFlag["x"] = true
+			case "<y>":
+				symFlag["y"] = true
+			case "</x>":
+				symFlag["x"] = false
+			case "</y>":
+				symFlag["y"] = false
+			case "<xy>":
+				symFlag["x"] = true
+				symFlag["y"] = true
+			case "</xy>":
+				symFlag["x"] = false
+				symFlag["y"] = false
+			}
+			continue
+		}
 
 		parts := regexp.MustCompile("  ").Split(x, -1)
 		r1 += parts[0] + " "
 		r2 += parts[1] + " "
 		lineCount++
 		if lineCount == 3 {
-			rules[target] = append(rules[target], []string{r1[:len(r1)-1], r2[:len(r2)-1]})
+			r1 = r1[:len(r1)-1]
+			r2 = r2[:len(r2)-1]
+			rules[target] = append(rules[target], []string{r1, r2})
+			if symFlag["x"] {
+				t1, t2 := "", ""
+				for _, ind := range "210543876" {
+					i, _ := strconv.Atoi(string(ind))
+					t1 += string(strings.Split(r1, " ")[i]) + " "
+					t2 += string(strings.Split(r2, " ")[i]) + " "
+				}
+				rules[target] = append(rules[target], []string{t1[:len(t1)-1], t2[:len(t2)-1]})
+				if symFlag["y"] {
+					t1, t2 := "", ""
+					for _, ind := range "876543210" {
+						i, _ := strconv.Atoi(string(ind))
+						t1 += string(strings.Split(r1, " ")[i]) + " "
+						t2 += string(strings.Split(r2, " ")[i]) + " "
+					}
+					rules[target] = append(rules[target], []string{t1[:len(t1)-1], t2[:len(t2)-1]})
+
+					t1, t2 = "", ""
+					for _, ind := range "678345012" {
+						i, _ := strconv.Atoi(string(ind))
+						t1 += string(strings.Split(r1, " ")[i]) + " "
+						t2 += string(strings.Split(r2, " ")[i]) + " "
+					}
+					rules[target] = append(rules[target], []string{t1[:len(t1)-1], t2[:len(t2)-1]})
+				}
+			} else if symFlag["y"] {
+				t1, t2 := "", ""
+				for _, ind := range "678345012" {
+					i, _ := strconv.Atoi(string(ind))
+					t1 += string(strings.Split(r1, " ")[i]) + " "
+					t2 += string(strings.Split(r2, " ")[i]) + " "
+				}
+				rules[target] = append(rules[target], []string{t1[:len(t1)-1], t2[:len(t2)-1]})
+			}
 			r1, r2 = "", ""
 			lineCount = 0
 		}
@@ -201,7 +260,7 @@ func main() {
 			// 	c = newCell(xi, yi, "empty")
 			// }
 			if yi <= gh/2 {
-				if rand.IntN(2) == 1 {
+				if true {
 					c = newCell(xi, yi, Water)
 				} else {
 					c = newCell(xi, yi, Sand)
@@ -478,7 +537,7 @@ func (c *cell) updateSqr() []*updatePack {
 	possibleRules := rules[c.t]
 	first := make([]string, 2)
 	foundMatch := false
-	for randI := range rand.Perm(len(possibleRules)) {
+	for _, randI := range rand.Perm(len(possibleRules)) {
 		match := true
 		v := possibleRules[randI]
 		r := v[0]
