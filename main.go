@@ -259,8 +259,8 @@ func main() {
 			// case 2:
 			// 	c = newCell(xi, yi, "empty")
 			// }
-			if yi <= gh/2 {
-				if true {
+			if false {
+				if false {
 					c = newCell(xi, yi, Water)
 				} else {
 					c = newCell(xi, yi, Sand)
@@ -289,6 +289,8 @@ func main() {
 		go updateThread(quitCh)
 	}
 
+	window.SetMouseButtonCallback(mouseButtonCB)
+
 	// go renderThread(window, quitCh)
 
 	for !window.ShouldClose() {
@@ -316,6 +318,30 @@ func main() {
 // 		}
 // 	}
 // }
+
+func mouseButtonCB(window *glfw.Window, button glfw.MouseButton, action glfw.Action, mod glfw.ModifierKey) {
+	if action == glfw.Press && button == glfw.MouseButton1 {
+		x, y := window.GetCursorPos()
+		bx := int(math.Floor(x / (scrW / gw)))
+		by := int(math.Floor(y / (scrH / gh)))
+
+		for dx := -5; dx <= 5; dx++ {
+			for dy := -5; dy <= 5; dy++ {
+				xp, yp := bx+dx, by+dy
+				if xp >= 0 && yp >= 0 && xp < gw && yp < gh {
+					if grid[yp][xp].t == Empty {
+						if mod == glfw.ModShift {
+							grid[yp][xp].t = Water
+						} else {
+							grid[yp][xp].t = Sand
+						}
+					}
+				}
+			}
+		}
+		// grid[by][bx].t = Sand
+	}
+}
 
 func updateThread(quit chan uint8) {
 out:
